@@ -76,7 +76,7 @@ function showGate() {
     }
     const auth = { email: payload.email, name: payload.name, picture: payload.picture, ts: Date.now() };
     setAuth(auth);
-    startApp(auth);
+    location.reload();
   };
 
   // Render Google button if library loaded
