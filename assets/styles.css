@@ -315,10 +315,15 @@ body::before {
 }
 
 /* ── Status Bar ──────────────────────────────────────────── */
-.status-grid {
+.status-bar, .status-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  overflow: hidden;
 }
 
 .status-item {
