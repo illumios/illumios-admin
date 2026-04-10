@@ -1,90 +1,167 @@
-// Daily Log module — per-day text entries, saved locally (Pass 1).
+// Daily Log module — clean split-panel editor with history sidebar.
 import { storage } from '../core/storage.js';
 
-const ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+
 const KEY = 'dailyLog/entries';
 
-function today() { return new Date().toISOString().slice(0, 10); }
-function fmtDate(iso) {
+function today()   { return new Date().toISOString().slice(0, 10); }
+function fmtShort(iso) {
   const d = new Date(iso + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+function fmtFull(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+function esc(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 async function getEntries() {
   const modern = await storage.get(KEY, null);
   if (modern) return modern;
-  const legacy = await storage.legacyGet('mc_logs', {});
+  // Back-compat: try legacy key
+  const legacy = storage.legacyGet('mc_logs', null);
   return legacy || {};
 }
 
 let saveTimer = null;
-
-function renderHistory(entries) {
-  const days = Object.keys(entries).sort().reverse().slice(0, 7);
-  if (!days.length) return '<p style="color:var(--text-dim);font-size:0.85rem">No previous entries.</p>';
-  return days.map(d => `
-    <div class="log-entry">
-      <span class="log-date">${fmtDate(d)}</span>
-      ${escapeHtml(entries[d])}
-    </div>`).join('');
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-}
 
 export default {
   id: 'daily-log',
   title: 'Daily Log',
   icon: ICON,
   showInSidebar: true,
-  widgets: [
-    {
-      id: 'daily-log-today',
-      title: "Today's Log",
-      async render(el) {
-        const entries = await getEntries();
-        const todayText = entries[today()] || '';
-        el.innerHTML = `
-          <div class="card-title">Today's Log</div>
-          <p style="color:var(--text-dim);font-size:0.85rem;min-height:3em">${todayText ? escapeHtml(todayText.slice(0, 160)) + (todayText.length > 160 ? '…' : '') : 'No entry yet.'}</p>
-          <a href="#/daily-log" class="link-btn" style="display:inline-flex;margin-top:8px">Open Daily Log</a>`;
-      },
-    },
-  ],
-  async mount(el) {
-    const entries = await getEntries();
-    const current = entries[today()] || '';
-    el.innerHTML = `
-      <div class="card">
-        <div class="card-title">Today — ${fmtDate(today())}</div>
-        <textarea class="log-textarea" id="log-textarea" placeholder="What did you work on today? What's blocked? What's next?">${escapeHtml(current)}</textarea>
-        <div class="log-actions">
-          <button class="save-btn" id="save-btn">Save</button>
-          <span class="autosave-indicator" id="autosave-label"></span>
-        </div>
-        <div class="log-history">
-          <div class="log-history-title">Past 7 Days</div>
-          <div id="log-entries">${renderHistory(entries)}</div>
-        </div>
-      </div>`;
 
-    const ta = el.querySelector('#log-textarea');
-    const label = el.querySelector('#autosave-label');
-    const save = async (silent = false) => {
+  // ── Widget for Home ──────────────────────────────────────
+  widgets: [{
+    id: 'daily-log-today',
+    title: "Today's Log",
+    async render(el) {
       const entries = await getEntries();
-      entries[today()] = ta.value;
-      await storage.set(KEY, entries);
-      label.textContent = silent ? 'Autosaved' : 'Saved';
-      el.querySelector('#log-entries').innerHTML = renderHistory(entries);
-      setTimeout(() => { label.textContent = ''; }, 1800);
+      const text = entries[today()] || '';
+      el.innerHTML = `
+        <div style="display:flex;flex-direction:column;height:100%;gap:12px;padding:4px 0">
+          <div style="font-size:0.8rem;color:var(--muted)">${fmtShort(today())}</div>
+          <div style="font-size:0.87rem;line-height:1.65;flex:1;color:${text ? 'var(--cream)' : 'var(--muted)'}">
+            ${text ? esc(text.slice(0, 200)) + (text.length > 200 ? '…' : '') : 'No entry yet for today.'}
+          </div>
+          <a href="#/daily-log" class="link-btn">Open Log →</a>
+        </div>`;
+    },
+  }],
+
+  // ── Full view ────────────────────────────────────────────
+  async mount(el) {
+    let entries   = await getEntries();
+    let activeDay = today();
+
+    const allDays = () => Object.keys(entries).sort().reverse();
+
+    const render = () => {
+      const days = allDays();
+      const currentText = entries[activeDay] || '';
+
+      el.innerHTML = `
+        <div class="daily-log-layout">
+
+          <!-- Editor panel -->
+          <div class="log-editor-card">
+            <div class="log-editor-header">
+              <div class="log-date-label">${fmtFull(activeDay)}</div>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span class="log-autosave" id="log-status"></span>
+                <button class="btn-sm btn-primary" id="log-save-btn">Save</button>
+              </div>
+            </div>
+            <textarea
+              class="log-full-textarea"
+              id="log-ta"
+              placeholder="What did you work on? What moved forward? What's blocked? What's next?&#10;&#10;This is your private scratch pad — write freely."
+              spellcheck="true"
+            >${esc(currentText)}</textarea>
+            <div class="log-editor-footer">
+              <span style="font-size:0.75rem;color:var(--muted)">⌘ + Enter to save</span>
+              <span id="log-char-count" style="font-size:0.75rem;color:var(--muted)">${currentText.length} chars</span>
+            </div>
+          </div>
+
+          <!-- History sidebar -->
+          <div class="log-history-panel">
+            <div class="log-history-header">Past Entries</div>
+            <button class="log-new-day-btn ${activeDay === today() ? 'active' : ''}" data-day="${today()}" id="log-today-btn">
+              <span class="log-history-day">Today</span>
+              <span class="log-history-preview">${entries[today()] ? esc(entries[today()].slice(0,40)) + '…' : 'No entry yet'}</span>
+            </button>
+            ${days.filter(d => d !== today()).map(d => `
+              <button class="log-new-day-btn ${activeDay === d ? 'active' : ''}" data-day="${d}">
+                <span class="log-history-day">${fmtShort(d)}</span>
+                <span class="log-history-preview">${esc((entries[d] || '').slice(0, 40))}…</span>
+              </button>`).join('')}
+            ${days.length === 0 ? '<p class="log-empty-history">Start writing — your entries will appear here.</p>' : ''}
+          </div>
+
+        </div>`;
+
+      bindEvents();
     };
 
-    ta.addEventListener('input', () => {
-      label.textContent = 'Saving…';
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => save(true), 900);
-    });
-    el.querySelector('#save-btn').addEventListener('click', () => save(false));
+    const bindEvents = () => {
+      const ta        = document.getElementById('log-ta');
+      const statusEl  = document.getElementById('log-status');
+      const countEl   = document.getElementById('log-char-count');
+      const saveBtn   = document.getElementById('log-save-btn');
+
+      const doSave = async (silent = false) => {
+        entries = await getEntries();
+        entries[activeDay] = ta.value;
+        await storage.set(KEY, entries);
+        if (!silent) {
+          statusEl.textContent = '✓ Saved';
+          setTimeout(() => { statusEl.textContent = ''; }, 2000);
+        } else {
+          statusEl.textContent = 'Autosaved';
+          setTimeout(() => { statusEl.textContent = ''; }, 1500);
+        }
+        // Update sidebar preview for today
+        const todayBtn = document.getElementById('log-today-btn');
+        if (todayBtn && activeDay === today()) {
+          const preview = todayBtn.querySelector('.log-history-preview');
+          if (preview) preview.textContent = ta.value ? ta.value.slice(0, 40) + '…' : 'No entry yet';
+        }
+      };
+
+      ta.addEventListener('input', () => {
+        countEl.textContent = ta.value.length + ' chars';
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => doSave(true), 1200);
+      });
+
+      ta.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+          e.preventDefault();
+          doSave(false);
+        }
+      });
+
+      saveBtn.addEventListener('click', () => doSave(false));
+
+      // Sidebar day switching
+      el.querySelectorAll('.log-new-day-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          // Save current before switching
+          entries = await getEntries();
+          entries[activeDay] = ta.value;
+          await storage.set(KEY, entries);
+
+          activeDay = btn.dataset.day;
+          entries = await getEntries();
+          render();
+        });
+      });
+    };
+
+    render();
   },
 };
