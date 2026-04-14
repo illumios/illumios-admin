@@ -4,6 +4,8 @@ import { storage } from '../core/storage.js';
 
 const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`;
 const KEY = 'plan/tasks';
+const VERSION_KEY = 'plan/version';
+const PLAN_VERSION = '2026-04-14-beta';
 
 function esc(s) { return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -17,6 +19,7 @@ function parseDaysLeft(datesStr) {
 
 function taskMeta(text) {
   if (text.includes('🔴')) return { color: 'var(--red)',    label: text.replace(/🔴/g, '').trim() };
+  if (text.includes('🟡')) return { color: 'var(--yellow)', label: text.replace(/🟡/g, '').trim() };
   if (text.includes('⚠️')) return { color: 'var(--orange)', label: text.replace(/⚠️/g, '').trim() };
   if (text.includes('✅')) return { color: 'var(--green)',  label: text.replace(/✅/g, '').trim() };
   return { color: 'var(--muted)', label: text };
@@ -24,8 +27,22 @@ function taskMeta(text) {
 
 async function getSaved() {
   const modern = await storage.get(KEY, null);
-  if (modern) return modern;
-  return storage.legacyGet('mc_tasks', {}) || {};
+  const version = await storage.get(VERSION_KEY, null);
+  if (modern && version === PLAN_VERSION) return modern;
+  if (modern && version !== PLAN_VERSION) {
+    await storage.set('plan/tasks-backup', modern);
+  }
+
+  const seeded = {};
+  PHASES.forEach((phase, pi) => {
+    phase.tasks.forEach((task, ti) => {
+      if (task.includes('✅')) seeded[pi + '-' + ti] = true;
+    });
+  });
+
+  await storage.set(KEY, seeded);
+  await storage.set(VERSION_KEY, PLAN_VERSION);
+  return seeded;
 }
 
 function computePct(pi, saved) {
@@ -156,8 +173,9 @@ export default {
       const allRemaining = tasks.filter((_, ti) => !saved[pi + '-' + ti]);
       const sorted = [
         ...allRemaining.filter(t => t.includes('🔴')),
+        ...allRemaining.filter(t => t.includes('🟡') && !t.includes('🔴')),
         ...allRemaining.filter(t => t.includes('⚠️') && !t.includes('🔴')),
-        ...allRemaining.filter(t => !t.includes('🔴') && !t.includes('⚠️')),
+        ...allRemaining.filter(t => !t.includes('🔴') && !t.includes('🟡') && !t.includes('⚠️')),
       ];
       const visible = sorted.slice(0, 4);
 

@@ -5,56 +5,142 @@ import { storage } from '../core/storage.js';
 const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`;
 
 const STORAGE_KEY = 'tasks/list';
+const STORAGE_VERSION_KEY = 'tasks/version';
+const SEED_VERSION = '2026-04-14-beta';
 
 // ── Seed tasks from TASKS.md (first-run defaults) ─────────────────────────
 const SEED_TASKS = [
   {
-    id: 't-1', bucket: 'Today', text: 'Test Maya voice AI with updated prompt',
+    id: 't-1', bucket: 'Today', text: 'Finalize beta promise for Illumios training',
     done: false,
-    note: 'Live call to verify AI disclosure, routing, customer status detection. Some broken routing was left unfinished — exact issue unknown.',
+    note: 'Use the PRD promise as the working default. Keep it focused on small business owners, time savings, and smarter workflows.',
     tag: '🔴 Urgent',
   },
   {
-    id: 't-2', bucket: 'Today', text: 'Publish AI Roadmap Quiz to quiz.illumios.com',
+    id: 't-2', bucket: 'Today', text: 'Lock the beta name and founding-member price',
     done: false,
-    note: 'GHL custom HTML element unresponsive on double-click; try right-click or gear icon in the orange toolbar.',
+    note: 'Recommended default: "AI for Small Business Owners: Your First 30 Days" at $497.',
     tag: '🔴 Urgent',
   },
   {
-    id: 't-3', bucket: 'This Week', text: 'Complete GHL affiliate signup',
+    id: 't-3', bucket: 'Today', text: 'Write the 4 session titles for the beta',
     done: false,
-    note: 'GHL offers 40% recurring. Sign up at highlevel.com/affiliate-program, get link, place at Module 4 of curriculum.',
+    note: 'Keep them practical. Do not overbuild the course before the first cohort exists.',
+    tag: '🔴 Urgent',
+  },
+  {
+    id: 't-4', bucket: 'Today', text: 'Draft the beta invite message',
+    done: false,
+    note: 'Write the message you can send to warm contacts, BNI connections, and discovery-call prospects this week.',
+    tag: '🔴 Urgent',
+  },
+  {
+    id: 't-5', bucket: 'This Week', text: 'Build Session 1 outline and worksheet',
+    done: false,
+    note: 'Session 1 should help people identify 3 meaningful AI use cases in their business.',
     tag: '🟡 Soon',
   },
   {
-    id: 't-4', bucket: 'This Week', text: 'Verify CleverFlo Sales Pipeline rename in GHL',
+    id: 't-6', bucket: 'This Week', text: 'Build Sessions 2–4 outlines and outputs',
     done: false,
-    note: 'May already be done — quick check in GHL → Pipelines.',
-    tag: '🟢 Low',
-  },
-  {
-    id: 't-5', bucket: 'This Week', text: 'Admin dashboard modular refactor',
-    done: false,
-    note: 'Surgical approach: keep Google auth block verbatim. Gridstack.js widget grid with Customize button.',
+    note: 'Each session should end with a practical output: prompts, one workflow, and a 30-day action plan.',
     tag: '🟡 Soon',
   },
   {
-    id: 't-6', bucket: 'Later', text: 'Pass 2: illumios-data private repo + fine-grained PAT',
+    id: 't-7', bucket: 'This Week', text: 'Create onboarding email and simple enrollment flow',
     done: false,
-    note: 'GitHub-as-database backend. Swap storage.js adapter from localStorage to GitHub REST API.',
+    note: 'Participants need a payment path, calendar expectations, and a clear description of what they will get.',
+    tag: '🟡 Soon',
+  },
+  {
+    id: 't-8', bucket: 'This Week', text: 'Invite the first 5 warm prospects to the beta',
+    done: false,
+    note: 'Start with people who already know you and are likely to give useful feedback, not perfect strangers.',
+    tag: '🔴 Urgent',
+  },
+  {
+    id: 't-9', bucket: 'This Week', text: 'Test Maya voice AI end-to-end',
+    done: false,
+    note: 'Run a real call and verify disclosure, routing, customer-status detection, and the next-step path.',
+    tag: '🟡 Soon',
+  },
+  {
+    id: 't-10', bucket: 'This Week', text: 'Complete GHL affiliate signup',
+    done: false,
+    note: 'Get the affiliate link now so it can be placed into the curriculum when the beta turns into Academia.',
+    tag: '🟡 Soon',
+  },
+  {
+    id: 't-11', bucket: 'Later', text: 'Wire quiz completions into GHL with a quiz-completed tag',
+    done: false,
+    note: 'Quiz leads should not disappear. Create or upsert contacts and make them usable for follow-up.',
     tag: '🟢 Low',
   },
   {
-    id: 't-7', bucket: 'Waiting On', text: 'A2P SMS campaign carrier approval',
+    id: 't-12', bucket: 'Later', text: 'Add GHL private integration key to the admin dashboard',
     done: false,
-    note: 'No ETA. Calls work now.',
-    tag: '⏳ Blocked',
+    note: 'Needed before live data widgets can show pipeline, conversations, leads, and calls.',
+    tag: '🟢 Low',
   },
   {
-    id: 't-8', bucket: 'Waiting On', text: 'File Wyoming LLC',
+    id: 't-13', bucket: 'Later', text: 'Build dashboard live-data widgets',
+    done: false,
+    note: 'Pipeline snapshot, open conversations, new leads today, discovery calls today, and Maya call log.',
+    tag: '🟢 Low',
+  },
+  {
+    id: 't-14', bucket: 'Later', text: 'Create testimonial and case-study capture template',
+    done: false,
+    note: 'You will need this immediately after the first cohort to turn wins into proof.',
+    tag: '🟢 Low',
+  },
+  {
+    id: 't-15', bucket: 'Waiting On', text: 'File Wyoming LLC',
     done: false,
     note: 'Waiting on Sunshine sign-off.',
     tag: '⏳ Blocked',
+  },
+  {
+    id: 't-16', bucket: 'Waiting On', text: 'A2P SMS campaign carrier approval',
+    done: false,
+    note: 'Still pending. Calls work now, but SMS-related follow-up remains constrained.',
+    tag: '⏳ Blocked',
+  },
+  {
+    id: 't-17', bucket: 'Done', text: 'illumios.com live',
+    done: true,
+    note: 'Website is live and serving as the public marketing presence.',
+    tag: '✅ Complete',
+  },
+  {
+    id: 't-18', bucket: 'Done', text: 'AI Roadmap Quiz published',
+    done: true,
+    note: 'Quiz is live at quiz.illumios.com.',
+    tag: '✅ Complete',
+  },
+  {
+    id: 't-19', bucket: 'Done', text: 'DKIM activated',
+    done: true,
+    note: 'Email authentication is complete.',
+    tag: '✅ Complete',
+  },
+  {
+    id: 't-20', bucket: 'Done', text: 'GHL sub-account configured',
+    done: true,
+    note: 'Pipelines, workflows, calendar, and contacts are already in place.',
+    tag: '✅ Complete',
+  },
+  {
+    id: 't-21', bucket: 'Done', text: 'Maya AI Voice Receptionist live',
+    done: true,
+    note: 'The voice assistant is installed and operating.',
+    tag: '✅ Complete',
+  },
+  {
+    id: 't-22', bucket: 'Done', text: 'Google Workspace email live',
+    done: true,
+    note: 'steve@, sunshine@, and info@ are active.',
+    tag: '✅ Complete',
   },
 ];
 
@@ -68,9 +154,13 @@ function uid() { return 't-' + Date.now().toString(36) + Math.random().toString(
 
 async function load() {
   const saved = await storage.get(STORAGE_KEY, null);
-  if (saved && Array.isArray(saved)) return saved;
-  // First run — seed with TASKS.md data
+  const version = await storage.get(STORAGE_VERSION_KEY, null);
+  if (saved && Array.isArray(saved) && version === SEED_VERSION) return saved;
+  if (saved && Array.isArray(saved) && version !== SEED_VERSION) {
+    await storage.set('tasks/list-backup', saved);
+  }
   await storage.set(STORAGE_KEY, SEED_TASKS);
+  await storage.set(STORAGE_VERSION_KEY, SEED_VERSION);
   return SEED_TASKS.map(t => ({...t}));
 }
 
