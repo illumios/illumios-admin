@@ -6,32 +6,58 @@ const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke
 
 const STORAGE_KEY = 'tasks/list';
 const STORAGE_VERSION_KEY = 'tasks/version';
-const SEED_VERSION = '2026-04-17-cross-project-v1';
+const SEED_VERSION = '2026-04-20-monday-shift-v1';
+const NEXT_WORKDAY = '2026-04-20';
+
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function humanDate(iso) {
+  const d = new Date(`${iso}T00:00:00`);
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+function isDeferred(task) {
+  return Boolean(task.deferUntil && task.deferUntil > isoToday());
+}
+
+function isReadyToday(task) {
+  return task.bucket === 'Today' && (!task.deferUntil || task.deferUntil <= isoToday());
+}
+
+function mondayShiftNote(text) {
+  return `${text} Pick this back up Monday, Apr 20.`;
+}
 
 // ── Seed tasks from TASKS.md (first-run defaults) ─────────────────────────
 const SEED_TASKS = [
   {
     id: 't-1', bucket: 'Today', text: 'Create the website GHL waitlist workflow and capture the inbound webhook URL',
     done: false,
-    note: 'The website code is already shifted to a founding-cohort / priority-list flow. The missing piece is the live GHL workflow + webhook URL that the Vercel app can actually hit.',
+    deferUntil: NEXT_WORKDAY,
+    note: mondayShiftNote('The website code is already shifted to a founding-cohort / priority-list flow. The missing piece is the live GHL workflow + webhook URL that the Vercel app can actually hit.'),
     tag: '🔴 Urgent',
   },
   {
     id: 't-2', bucket: 'Today', text: 'Add website Vercel env vars and deploy the waitlist flow live',
     done: false,
-    note: 'Set ILLUMIOS_GHL_INBOUND_WEBHOOK_URL and ILLUMIOS_GHL_LOCATION_ID, then push the polished waitlist version so illumios.com can capture priority-list leads for real.',
+    deferUntil: NEXT_WORKDAY,
+    note: mondayShiftNote('Set ILLUMIOS_GHL_INBOUND_WEBHOOK_URL and ILLUMIOS_GHL_LOCATION_ID, then push the polished waitlist version so illumios.com can capture priority-list leads for real.'),
     tag: '🔴 Urgent',
   },
   {
     id: 't-3', bucket: 'Today', text: 'Decide whether website waitlist leads go to GHL only or GHL + Supabase backup',
     done: false,
-    note: 'The code already supports the handoff shape. Make one explicit storage decision before layering extra plumbing into the live waitlist flow.',
+    deferUntil: NEXT_WORKDAY,
+    note: mondayShiftNote('The code already supports the handoff shape. Make one explicit storage decision before layering extra plumbing into the live waitlist flow.'),
     tag: '🟡 Soon',
   },
   {
     id: 't-4', bucket: 'Today', text: 'Convert the Hub PRD into an implementation plan',
     done: false,
-    note: 'Take the student portal PRD and turn it into a real route map, schema, auth model, session unlock model, question flow, and attendance flow for hub.illumios.com.',
+    deferUntil: NEXT_WORKDAY,
+    note: mondayShiftNote('Take the student portal PRD and turn it into a real route map, schema, auth model, session unlock model, question flow, and attendance flow for hub.illumios.com.'),
     tag: '🔴 Urgent',
   },
   {
@@ -176,12 +202,28 @@ function esc(s) {
 
 function uid() { return 't-' + Date.now().toString(36) + Math.random().toString(36).slice(2,5); }
 
+function migrateTasks(saved) {
+  return saved.map(task => {
+    if (!task.done && task.bucket === 'Today') {
+      return {
+        ...task,
+        deferUntil: task.deferUntil || NEXT_WORKDAY,
+      };
+    }
+    return task;
+  });
+}
+
 async function load() {
   const saved = await storage.get(STORAGE_KEY, null);
   const version = await storage.get(STORAGE_VERSION_KEY, null);
   if (saved && Array.isArray(saved) && version === SEED_VERSION) return saved;
   if (saved && Array.isArray(saved) && version !== SEED_VERSION) {
     await storage.set('tasks/list-backup', saved);
+    const migrated = migrateTasks(saved);
+    await storage.set(STORAGE_KEY, migrated);
+    await storage.set(STORAGE_VERSION_KEY, SEED_VERSION);
+    return migrated;
   }
   await storage.set(STORAGE_KEY, SEED_TASKS);
   await storage.set(STORAGE_VERSION_KEY, SEED_VERSION);
@@ -204,6 +246,7 @@ function renderTask(t, idx) {
           ${t.note ? `<div class="task-note-text">${esc(t.note)}</div>` : ''}
         </div>
         <div class="task-actions-row">
+          ${t.deferUntil && !t.done ? `<span class="task-tag">📅 ${esc(humanDate(t.deferUntil))}</span>` : ''}
           ${t.tag ? `<span class="task-tag">${esc(t.tag)}</span>` : ''}
           <button class="task-action-btn task-note-btn" data-idx="${idx}" title="Add/edit note">📝</button>
           <button class="task-action-btn task-delete-btn" data-idx="${idx}" title="Delete">✕</button>
@@ -220,7 +263,12 @@ function renderTask(t, idx) {
 }
 
 function renderBucket(name, tasks) {
-  const items = tasks.filter(t => t.done ? name === 'Done' : t.bucket === name);
+  const items = tasks.filter(t => {
+    if (t.done) return name === 'Done';
+    if (name === 'Today') return isReadyToday(t);
+    if (name === 'This Week') return t.bucket === 'This Week' || (t.bucket === 'Today' && isDeferred(t));
+    return t.bucket === name;
+  });
   return `
     <div class="task-bucket">
       <div class="task-bucket-header">
@@ -247,8 +295,9 @@ const TAG_COLOR = {
 
 async function renderTodayWidget(el) {
   const tasks     = await load();
-  const todayItems = tasks.filter(t => !t.done && t.bucket === 'Today');
-  const weekItems  = tasks.filter(t => !t.done && t.bucket === 'This Week').slice(0, 3);
+  const todayItems = tasks.filter(t => !t.done && isReadyToday(t));
+  const deferredTodayItems = tasks.filter(t => !t.done && t.bucket === 'Today' && isDeferred(t));
+  const weekItems  = tasks.filter(t => !t.done && (t.bucket === 'This Week' || (t.bucket === 'Today' && isDeferred(t)))).slice(0, 3);
 
   el.textContent = '';
   const outer = document.createElement('div');
@@ -292,7 +341,9 @@ async function renderTodayWidget(el) {
   } else {
     const empty = document.createElement('div');
     empty.style.cssText = 'color:var(--muted);font-size:0.85rem;padding:4px 0';
-    empty.textContent = 'All clear for today.';
+    empty.textContent = deferredTodayItems.length
+      ? `Today's open work has been shifted to Monday, Apr 20.`
+      : 'All clear for today.';
     list.appendChild(empty);
   }
   outer.appendChild(list);

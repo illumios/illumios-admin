@@ -6,7 +6,8 @@ const ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const WEEKLY_SEED_VERSION_KEY = 'weekly/seed-version';
-const WEEKLY_SEED_VERSION = '2026-04-17-cross-project-v2';
+const WEEKLY_SEED_VERSION = '2026-04-20-monday-shift-v1';
+const SHIFTED_MONDAY = '2026-04-20';
 const PREVIOUS_CURRENT_WEEK_SEED = {
   priorities: [
     'Create the website GHL waitlist workflow, add Vercel env vars, and deploy the priority-list flow',
@@ -15,13 +16,21 @@ const PREVIOUS_CURRENT_WEEK_SEED = {
   ],
   note: 'Admin is already live on Vercel. Keep the website focused on the founding-cohort waitlist handoff, move the Hub from PRD to implementation plan, and avoid re-architecting Prospecting Website Builder before persistence and ingestion decisions are locked.',
 };
-const CURRENT_WEEK_SEED = {
+const PREVIOUS_NEXT_WEEK_SEED = {
   priorities: [
     'Create the website GHL waitlist workflow, add the Vercel env vars, and deploy the live priority-list flow',
     'Turn the Hub PRD into an implementation plan and confirm the Cohort 1 delivery layer',
     'Set up admin ops tracking and choose the Prospecting Website Builder persistence + deployment path'
   ],
   note: 'Admin is already live on Vercel and the website waitlist flow is coded. This week should stay narrow: make the website handoff real, move the Hub from PRD to implementation planning, and avoid expanding Prospecting Website Builder before persistence, ingestion, and deployment decisions are explicit.',
+};
+const MONDAY_SHIFT_SEED = {
+  priorities: [
+    'Create the website GHL waitlist workflow and capture the inbound webhook URL',
+    'Add the website Vercel env vars and deploy the live founding-cohort waitlist flow',
+    'Turn the Hub PRD into an implementation plan and lock the next real build slice'
+  ],
+  note: 'Friday is done. Pick the open work back up Monday, Apr 20: make the website handoff real first, then move the Hub from PRD to implementation planning, and keep Prospecting Website Builder focused on persistence, ingestion, and deployment decisions instead of more prototype expansion.',
 };
 
 function esc(s) {
@@ -72,35 +81,53 @@ async function saveWeek(monday, data) {
   await storage.set(weekKey(monday), data);
 }
 
-async function seedCurrentWeekIfNeeded(monday, data) {
-  const isCurrentWeek = weekKey(monday) === weekKey(weekStart(new Date()));
-  if (!isCurrentWeek) return data;
+function matchesSeed(entry, seed) {
+  if (!entry) return false;
+  const priorities = entry.priorities || [];
+  return seed.priorities.every((value, index) => priorities[index] === value) && (entry.note || '') === seed.note;
+}
 
-  const seededVersion = await storage.get(WEEKLY_SEED_VERSION_KEY, null);
-  if (seededVersion === WEEKLY_SEED_VERSION) return data;
+async function seedPlannerShiftIfNeeded(monday, data) {
+  const mondayKey = isoDate(monday);
+  const nextData = { ...data };
+  let changed = false;
 
-  const firstDay = isoDate(monday);
-  const current = data[firstDay] || { priorities: ['', '', ''], note: '' };
-  const priorities = [...current.priorities];
+  if (mondayKey !== SHIFTED_MONDAY && matchesSeed(nextData[mondayKey], PREVIOUS_CURRENT_WEEK_SEED)) {
+    delete nextData[mondayKey];
+    changed = true;
+  }
 
-  CURRENT_WEEK_SEED.priorities.forEach((item, index) => {
-    if (!priorities[index] || priorities[index] === PREVIOUS_CURRENT_WEEK_SEED.priorities[index]) {
-      priorities[index] = item;
-    }
-  });
+  if (mondayKey === SHIFTED_MONDAY) {
+    const current = nextData[mondayKey] || { priorities: ['', '', ''], note: '' };
+    const priorities = [...current.priorities];
 
-  const note = !current.note || current.note === PREVIOUS_CURRENT_WEEK_SEED.note
-    ? CURRENT_WEEK_SEED.note
-    : current.note;
+    MONDAY_SHIFT_SEED.priorities.forEach((item, index) => {
+      if (
+        !priorities[index] ||
+        priorities[index] === PREVIOUS_CURRENT_WEEK_SEED.priorities[index] ||
+        priorities[index] === PREVIOUS_NEXT_WEEK_SEED.priorities[index]
+      ) {
+        priorities[index] = item;
+      }
+    });
 
-  data[firstDay] = {
-    priorities,
-    note,
-  };
+    const note = !current.note || current.note === PREVIOUS_CURRENT_WEEK_SEED.note || current.note === PREVIOUS_NEXT_WEEK_SEED.note
+      ? MONDAY_SHIFT_SEED.note
+      : current.note;
 
-  await saveWeek(monday, data);
+    nextData[mondayKey] = {
+      priorities,
+      note,
+    };
+    changed = true;
+  }
+
+  if (changed) {
+    await saveWeek(monday, nextData);
+  }
+
   await storage.set(WEEKLY_SEED_VERSION_KEY, WEEKLY_SEED_VERSION);
-  return data;
+  return nextData;
 }
 
 export default {
@@ -114,7 +141,7 @@ export default {
 
     const render = async () => {
       let data  = await loadWeek(monday);
-      data = await seedCurrentWeekIfNeeded(monday, data);
+      data = await seedPlannerShiftIfNeeded(monday, data);
       const dates = weekDates(monday);
 
       const weekLabel = `${fmtDay(dates[0])} – ${fmtDay(dates[6])}, ${dates[0].getFullYear()}`;
